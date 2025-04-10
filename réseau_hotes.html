@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Gestion Réseaux, Sous-Réseaux & Hôtes</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    label, input, select { display: block; margin-bottom: 10px; }
+    #message { margin-top: 15px; font-weight: bold; }
+    .success { color: green; }
+    .error { color: red; }
+    .network, .subnet, .host { margin-top: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+    .subnet { margin-left: 20px; background-color: #f9f9f9; }
+    .host { margin-left: 40px; background-color: #efefef; }
+    button.action { margin-left: 10px; }
+  </style>
+</head>
+<body>
+
+  <h2>Ajouter un réseau principal</h2>
+  <form id="formRéseau">
+    <input type="text" id="ip" placeholder="IP réseau (ex: 192.168.0.0)">
+    <input type="number" id="cidr" placeholder="Masque CIDR (ex: 24)" min="1" max="32">
+    <button type="submit">Ajouter</button>
+  </form>
+
+  <h2 id="message"></h2>
+  <div id="listeReseaux"></div>
+
+  <script>
+    const reseaux = [];
+
+    const estIPValide = (ip) => {
+      const octets = ip.split(".");
+      return (
+        octets.length === 4 &&
+        octets.every(o => /^\d+$/.test(o) && parseInt(o) >= 0 && parseInt(o) <= 255)
+      );
+    };
+
+    const ipToInt = (ip) => ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
+    const intToIp = (int) => [(int >>> 24) & 255, (int >>> 16) & 255, (int >>> 8) & 255, int & 255].join('.');
+    const calcNet = (ip, cidr) => intToIp(ipToInt(ip) & (~((1 << (32 - cidr)) - 1) >>> 0));
+
+    const afficherListe = () => {
+      const liste = document.getElementById("listeReseaux");
+      liste.innerHTML = "";
+      reseaux.forEach((r, i) => {
+        const netDiv = document.createElement("div");
+        netDiv.className = "network";
+        netDiv.innerHTML = `<strong>${r.ip}/${r.cidr}</strong>
+          <button class="action" onclick="supprimerReseau(${i})">🗑️</button>
+          <button class="action" onclick="modifierReseau(${i})">✏️</button>
+          <br><input placeholder='Sous-réseau IP' id='sousIp${i}'>
+          <input type='number' placeholder='CIDR' min='1' max='32' id='sousCidr${i}'>
+          <button onclick='ajouterSousReseau(${i})'>Ajouter Sous-réseau</button>`;
+
+        r.subnets.forEach((s, j) => {
+          const subDiv = document.createElement("div");
+          subDiv.className = "subnet";
+          subDiv.innerHTML = `<strong>${s.ip}/${s.cidr}</strong>
+            <button class="action" onclick="supprimerSousReseau(${i},${j})">🗑️</button>
+            <button class="action" onclick="modifierSousReseau(${i},${j})">✏️</button>
+            <br><input placeholder='IP hôte' id='ipHote${i}_${j}'>
+            <input placeholder='Nom hôte' id='nomHote${i}_${j}'>
+            <button onclick='ajouterHote(${i},${j})'>Ajouter Hôte</button>`;
+
+          s.hosts.forEach((h, k) => {
+            const hostDiv = document.createElement("div");
+            hostDiv.className = "host";
+            hostDiv.innerHTML = `${h.ip} - ${h.nom}
+              <button class="action" onclick="supprimerHote(${i},${j},${k})">🗑️</button>
+              <button class="action" onclick="modifierHote(${i},${j},${k})">✏️</button>`;
+            subDiv.appendChild(hostDiv);
+          });
+
+          netDiv.appendChild(subDiv);
+        });
+
+        liste.appendChild(netDiv);
+      });
+    };
+
+    const message = (msg, success = true) => {
+      const m = document.getElementById("message");
+      m.textContent = msg;
+      m.className = success ? "success" : "error";
+    };
+
+    document.getElementById("formRéseau").addEventListener("submit", e => {
+      e.preventDefault();
+      const ip = document.getElementById("ip").value.trim();
+      const cidr = parseInt(document.getElementById("cidr").value);
+      if (!estIPValide(ip) || isNaN(cidr)) return message("IP ou CIDR invalide", false);
+      const netIp = calcNet(ip, cidr);
+      if (netIp !== ip) return message(`IP corrigée automatiquement en ${netIp}`, false);
+      if (reseaux.some(r => r.ip === ip && r.cidr === cidr)) return message("Réseau déjà existant", false);
+      reseaux.push({ ip, cidr, subnets: [] });
+      message("Réseau ajouté");
+      afficherListe();
+      e.target.reset();
+    });
+
+    const ajouterSousReseau = (i) => {
+      const ip = document.getElementById(`sousIp${i}`).value.trim();
+      const cidr = parseInt(document.getElementById(`sousCidr${i}`).value);
+      const parent = reseaux[i];
+      if (!estIPValide(ip) || isNaN(cidr) || cidr <= parent.cidr) return message("CIDR sous-réseau invalide", false);
+      if (calcNet(ip, cidr) !== ip) return message(`IP corrigée automatiquement à ${calcNet(ip, cidr)}`, false);
+      if (!ipToInt(ip).toString(2).startsWith(ipToInt(parent.ip).toString(2).slice(0, parent.cidr))) return message("Sous-réseau hors plage", false);
+      if (parent.subnets.some(s => s.ip === ip && s.cidr === cidr)) return message("Déjà existant", false);
+      parent.subnets.push({ ip, cidr, hosts: [] });
+      message("Sous-réseau ajouté");
+      afficherListe();
+    };
+
+    const ajouterHote = (i, j) => {
+      const ip = document.getElementById(`ipHote${i}_${j}`).value.trim();
+      const nom = document.getElementById(`nomHote${i}_${j}`).value.trim();
+      const subnet = reseaux[i].subnets[j];
+      if (!estIPValide(ip) || !nom) return message("IP ou nom invalide", false);
+      const start = ipToInt(calcNet(subnet.ip, subnet.cidr));
+      const end = start + (1 << (32 - subnet.cidr)) - 1;
+      const hostInt = ipToInt(ip);
+      if (hostInt <= start || hostInt >= end) return message("IP hors plage", false);
+      if (subnet.hosts.some(h => h.ip === ip)) return message("Hôte déjà existant", false);
+      subnet.hosts.push({ ip, nom });
+      message("Hôte ajouté");
+      afficherListe();
+    };
+
+    const supprimerReseau = i => { reseaux.splice(i, 1); afficherListe(); message("Réseau supprimé"); };
+    const supprimerSousReseau = (i, j) => { reseaux[i].subnets.splice(j, 1); afficherListe(); message("Sous-réseau supprimé"); };
+    const supprimerHote = (i, j, k) => { reseaux[i].subnets[j].hosts.splice(k, 1); afficherListe(); message("Hôte supprimé"); };
+
+    const modifierReseau = i => {
+      const nvIp = prompt("Nouvelle IP:", reseaux[i].ip);
+      const nvCidr = parseInt(prompt("Nouveau CIDR:", reseaux[i].cidr));
+      if (!estIPValide(nvIp) || isNaN(nvCidr)) return message("Valeurs invalides", false);
+      reseaux[i].ip = nvIp;
+      reseaux[i].cidr = nvCidr;
+      afficherListe();
+      message("Réseau modifié");
+    };
+
+    const modifierSousReseau = (i, j) => {
+      const nvIp = prompt("Nouvelle IP:", reseaux[i].subnets[j].ip);
+      const nvCidr = parseInt(prompt("Nouveau CIDR:", reseaux[i].subnets[j].cidr));
+      if (!estIPValide(nvIp) || isNaN(nvCidr)) return message("Valeurs invalides", false);
+      reseaux[i].subnets[j].ip = nvIp;
+      reseaux[i].subnets[j].cidr = nvCidr;
+      afficherListe();
+      message("Sous-réseau modifié");
+    };
+
+    const modifierHote = (i, j, k) => {
+      const nvIp = prompt("Nouvelle IP:", reseaux[i].subnets[j].hosts[k].ip);
+      const nvNom = prompt("Nouveau nom:", reseaux[i].subnets[j].hosts[k].nom);
+      if (!estIPValide(nvIp) || !nvNom) return message("Valeurs invalides", false);
+      reseaux[i].subnets[j].hosts[k].ip = nvIp;
+      reseaux[i].subnets[j].hosts[k].nom = nvNom;
+      afficherListe();
+      message("Hôte modifié");
+    };
+  </script>
+
+</body>
+</html>
