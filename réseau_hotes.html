@@ -108,9 +108,9 @@
     const cidr = parseInt(document.getElementById("cidr").value);
     if (!estIPValide(ip) || isNaN(cidr)) return message("IP ou CIDR invalide", false);
     const netIp = calcNet(ip, cidr);
-    if (ip !== netIp) return message("L'IP fournie n'est pas l'adresse réseau du CIDR", false);
-    if (reseaux.some(r => r.ip === netIp && r.cidr === cidr)) return message("Réseau déjà existant", false);
-    reseaux.push({ ip: netIp, cidr, subnets: [], hosts: [] });
+    if (ip !== netIp) return message("L'IP ne correspond pas au réseau pour ce CIDR", false);
+    if (reseaux.some(r => r.ip === ip && r.cidr === cidr)) return message("Réseau déjà existant", false);
+    reseaux.push({ ip, cidr, subnets: [], hosts: [] });
     message("Réseau ajouté");
     afficherListe();
     e.target.reset();
@@ -121,16 +121,20 @@
     const cidr = parseInt(document.getElementById(`sousCidr${i}`).value);
     if (!estIPValide(ip) || isNaN(cidr)) return message("Sous-réseau invalide", false);
     const netIp = calcNet(ip, cidr);
+    if (ip !== netIp) return message("L'IP ne correspond pas à une adresse de sous-réseau pour ce CIDR", false);
     const parent = reseaux[i];
-    const parentStart = ipToInt(calcNet(parent.ip, parent.cidr));
+    const parentStart = ipToInt(parent.ip);
     const parentEnd = parentStart + (1 << (32 - parent.cidr)) - 1;
-    const subnetStart = ipToInt(netIp);
+    const subnetStart = ipToInt(ip);
     const subnetEnd = subnetStart + (1 << (32 - cidr)) - 1;
 
-    if (subnetStart < parentStart || subnetEnd > parentEnd) return message("Sous-réseau hors du réseau", false);
-    if (parent.subnets.some(s => s.ip === netIp && s.cidr === cidr)) return message("Déjà existant", false);
+    if (subnetStart < parentStart || subnetEnd > parentEnd)
+      return message("Sous-réseau hors du réseau parent", false);
 
-    parent.subnets.push({ ip: netIp, cidr, hosts: [] });
+    if (parent.subnets.some(s => s.ip === ip && s.cidr === cidr))
+      return message("Sous-réseau déjà existant", false);
+
+    parent.subnets.push({ ip, cidr, hosts: [] });
     message("Sous-réseau ajouté");
     afficherListe();
   };
@@ -141,18 +145,15 @@
     const net = reseaux[i];
     if (!estIPValide(ip) || !nom) return message("IP ou nom invalide", false);
     const ipInt = ipToInt(ip);
-    const start = ipToInt(calcNet(net.ip, net.cidr));
+    const start = ipToInt(net.ip);
     const end = start + (1 << (32 - net.cidr)) - 1;
-
     if (ipInt <= start || ipInt >= end) return message("IP hors plage", false);
-
     if (net.hosts.some(h => h.ip === ip)) return message("IP déjà utilisée", false);
     for (const s of net.subnets) {
       if (s.hosts.some(h => h.ip === ip)) return message("IP déjà utilisée dans un sous-réseau", false);
     }
-
     for (const s of net.subnets) {
-      const subStart = ipToInt(calcNet(s.ip, s.cidr));
+      const subStart = ipToInt(s.ip);
       const subEnd = subStart + (1 << (32 - s.cidr)) - 1;
       if (ipInt > subStart && ipInt < subEnd) {
         s.hosts.push({ ip, nom });
@@ -160,7 +161,6 @@
         return message("Hôte ajouté dans le sous-réseau");
       }
     }
-
     net.hosts.push({ ip, nom });
     afficherListe();
     message("Hôte ajouté au réseau");
@@ -173,18 +173,16 @@
     const nvNom = prompt("Nouveau nom:", hote.nom);
     if (!estIPValide(nvIp) || !nvNom) return message("Valeurs invalides", false);
     const ipInt = ipToInt(nvIp);
-    const start = ipToInt(calcNet(net.ip, net.cidr));
+    const start = ipToInt(net.ip);
     const end = start + (1 << (32 - net.cidr)) - 1;
     if (ipInt <= start || ipInt >= end) return message("IP hors plage", false);
-
     if (net.hosts.some((h, idx) => h.ip === nvIp && idx !== k)) return message("IP déjà utilisée", false);
     for (const s of net.subnets) {
       if (s.hosts.some(h => h.ip === nvIp)) return message("IP déjà utilisée dans un sous-réseau", false);
     }
-
-    net.hosts.splice(k, 1); // Supprimer
+    net.hosts.splice(k, 1);
     for (const s of net.subnets) {
-      const subStart = ipToInt(calcNet(s.ip, s.cidr));
+      const subStart = ipToInt(s.ip);
       const subEnd = subStart + (1 << (32 - s.cidr)) - 1;
       if (ipInt > subStart && ipInt < subEnd) {
         s.hosts.push({ ip: nvIp, nom: nvNom });
@@ -192,7 +190,6 @@
         return message("Hôte déplacé vers le sous-réseau");
       }
     }
-
     net.hosts.push({ ip: nvIp, nom: nvNom });
     afficherListe();
     message("Hôte modifié");
@@ -233,7 +230,8 @@
     const ip = prompt("Nouvelle IP réseau:", r.ip);
     const cidr = parseInt(prompt("Nouveau CIDR:", r.cidr));
     if (!estIPValide(ip) || isNaN(cidr)) return message("Invalide", false);
-    reseaux[i].ip = calcNet(ip, cidr);
+    if (calcNet(ip, cidr) !== ip) return message("L'IP ne correspond pas à une adresse réseau", false);
+    reseaux[i].ip = ip;
     reseaux[i].cidr = cidr;
     afficherListe();
   };
@@ -248,7 +246,8 @@
     const ip = prompt("Nouvelle IP:", s.ip);
     const cidr = parseInt(prompt("Nouveau CIDR:", s.cidr));
     if (!estIPValide(ip) || isNaN(cidr)) return message("Invalide", false);
-    reseaux[i].subnets[j].ip = calcNet(ip, cidr);
+    if (calcNet(ip, cidr) !== ip) return message("L'IP ne correspond pas à une adresse réseau", false);
+    reseaux[i].subnets[j].ip = ip;
     reseaux[i].subnets[j].cidr = cidr;
     afficherListe();
   };
