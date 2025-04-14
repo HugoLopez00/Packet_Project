@@ -44,6 +44,7 @@
   const ipToInt = (ip) => ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
   const intToIp = (int) => [(int >>> 24) & 255, (int >>> 16) & 255, (int >>> 8) & 255, int & 255].join('.');
   const calcNet = (ip, cidr) => intToIp(ipToInt(ip) & (~((1 << (32 - cidr)) - 1) >>> 0));
+  const calcBroadcast = (ip, cidr) => intToIp(ipToInt(ip) | ((1 << (32 - cidr)) - 1));
 
   const message = (msg, success = true) => {
     const m = document.getElementById("message");
@@ -144,56 +145,81 @@
     const nom = document.getElementById(`nomHoteDirect${i}`).value.trim();
     const net = reseaux[i];
     if (!estIPValide(ip) || !nom) return message("IP ou nom invalide", false);
+
     const ipInt = ipToInt(ip);
     const start = ipToInt(net.ip);
     const end = start + (1 << (32 - net.cidr)) - 1;
+    const broadcast = ipToInt(calcBroadcast(net.ip, net.cidr));
+
+    // Vérifier si l'IP est dans le réseau
     if (ipInt <= start || ipInt >= end) return message("IP hors plage", false);
+
+    // Vérifier si l'IP est déjà utilisée
     if (net.hosts.some(h => h.ip === ip)) return message("IP déjà utilisée", false);
     for (const s of net.subnets) {
-      if (s.hosts.some(h => h.ip === ip)) return message("IP déjà utilisée dans un sous-réseau", false);
+        if (s.hosts.some(h => h.ip === ip)) return message("IP déjà utilisée dans un sous-réseau", false);
     }
+
+    // Vérifier si l'IP n'est pas une adresse réseau, sous-réseau ou broadcast existante
+    if (ip === net.ip || ipInt === broadcast || net.subnets.some(s => ip === s.ip || ipInt === ipToInt(calcBroadcast(s.ip, s.cidr)))) return message("IP correspond à une adresse réseau, sous-réseau ou broadcast", false);
+
     for (const s of net.subnets) {
-      const subStart = ipToInt(s.ip);
-      const subEnd = subStart + (1 << (32 - s.cidr)) - 1;
-      if (ipInt > subStart && ipInt < subEnd) {
-        s.hosts.push({ ip, nom });
-        afficherListe();
-        return message("Hôte ajouté dans le sous-réseau");
-      }
+        const subStart = ipToInt(s.ip);
+        const subEnd = subStart + (1 << (32 - s.cidr)) - 1;
+        const subBroadcast = ipToInt(calcBroadcast(s.ip, s.cidr));
+        if (ipInt > subStart && ipInt < subEnd && ipInt !== subBroadcast) {
+            s.hosts.push({ ip, nom });
+            afficherListe();
+            return message("Hôte ajouté dans le sous-réseau");
+        }
     }
+
     net.hosts.push({ ip, nom });
     afficherListe();
     message("Hôte ajouté au réseau");
-  };
+};
 
-  const modifierHoteDirect = (i, k) => {
+const modifierHoteDirect = (i, k) => {
     const net = reseaux[i];
     const hote = net.hosts[k];
     const nvIp = prompt("Nouvelle IP:", hote.ip);
     const nvNom = prompt("Nouveau nom:", hote.nom);
     if (!estIPValide(nvIp) || !nvNom) return message("Valeurs invalides", false);
+
     const ipInt = ipToInt(nvIp);
     const start = ipToInt(net.ip);
     const end = start + (1 << (32 - net.cidr)) - 1;
+    const broadcast = ipToInt(calcBroadcast(net.ip, net.cidr));
+
+    // Vérifier si l'IP est dans le réseau
     if (ipInt <= start || ipInt >= end) return message("IP hors plage", false);
+
+    // Vérifier si l'IP est déjà utilisée
     if (net.hosts.some((h, idx) => h.ip === nvIp && idx !== k)) return message("IP déjà utilisée", false);
     for (const s of net.subnets) {
-      if (s.hosts.some(h => h.ip === nvIp)) return message("IP déjà utilisée dans un sous-réseau", false);
+        if (s.hosts.some(h => h.ip === nvIp)) return message("IP déjà utilisée dans un sous-réseau", false);
     }
+
+    // Vérifier si l'IP n'est pas une adresse réseau, sous-réseau ou broadcast existante
+    if (nvIp === net.ip || ipInt === broadcast || net.subnets.some(s => nvIp === s.ip || ipInt === ipToInt(calcBroadcast(s.ip, s.cidr)))) return message("IP correspond à une adresse réseau, sous-réseau ou broadcast", false);
+
+    // Déplacer l'hôte si nécessaire
     net.hosts.splice(k, 1);
     for (const s of net.subnets) {
-      const subStart = ipToInt(s.ip);
-      const subEnd = subStart + (1 << (32 - s.cidr)) - 1;
-      if (ipInt > subStart && ipInt < subEnd) {
-        s.hosts.push({ ip: nvIp, nom: nvNom });
-        afficherListe();
-        return message("Hôte déplacé vers le sous-réseau");
-      }
+        const subStart = ipToInt(s.ip);
+        const subEnd = subStart + (1 << (32 - s.cidr)) - 1;
+        const subBroadcast = ipToInt(calcBroadcast(s.ip, s.cidr));
+        if (ipInt > subStart && ipInt < subEnd && ipInt !== subBroadcast) {
+            s.hosts.push({ ip: nvIp, nom: nvNom });
+            afficherListe();
+            return message("Hôte déplacé vers le sous-réseau");
+        }
     }
+
     net.hosts.push({ ip: nvIp, nom: nvNom });
     afficherListe();
     message("Hôte modifié");
-  };
+};
 
   const supprimerHoteDirect = (i, k) => {
     reseaux[i].hosts.splice(k, 1);
@@ -204,21 +230,54 @@
     const ip = document.getElementById(`ipHote${i}_${j}`).value.trim();
     const nom = document.getElementById(`nomHote${i}_${j}`).value.trim();
     if (!estIPValide(ip) || !nom) return message("Valeurs invalides", false);
+
     const subnet = reseaux[i].subnets[j];
-    if (subnet.hosts.some(h => h.ip === ip)) return message("Déjà utilisé", false);
+    const ipInt = ipToInt(ip);
+    const subStart = ipToInt(subnet.ip);
+    const subEnd = subStart + (1 << (32 - subnet.cidr)) - 1;
+    const subBroadcast = ipToInt(calcBroadcast(subnet.ip, subnet.cidr));
+
+    // Vérifier si l'IP est dans le sous-réseau
+    if (ipInt <= subStart || ipInt >= subEnd || ipInt === subBroadcast) return message("IP hors plage ou broadcast", false);
+
+    // Vérifier si l'IP est déjà utilisée
+    if (subnet.hosts.some(h => h.ip === ip)) return message("IP déjà utilisée", false);
+
+    // Vérifier si l'IP n'est pas une adresse réseau, sous-réseau ou broadcast existante
+    if (ip === subnet.ip || ipInt === subBroadcast || reseaux[i].subnets.some(s => ip === s.ip || ipInt === ipToInt(calcBroadcast(s.ip, s.cidr)))) return message("IP correspond à une adresse réseau, sous-réseau ou broadcast", false);
+
     subnet.hosts.push({ ip, nom });
     afficherListe();
-  };
+    message("Hôte ajouté");
+};
 
-  const modifierHote = (i, j, k) => {
-    const hote = reseaux[i].subnets[j].hosts[k];
+const modifierHote = (i, j, k) => {
+    const subnet = reseaux[i].subnets[j];
+    const hote = subnet.hosts[k];
     const nvIp = prompt("Nouvelle IP:", hote.ip);
     const nvNom = prompt("Nouveau nom:", hote.nom);
-    if (!estIPValide(nvIp) || !nvNom) return message("Invalide", false);
+    if (!estIPValide(nvIp) || !nvNom) return message("Valeurs invalides", false);
+
+    const ipInt = ipToInt(nvIp);
+    const subStart = ipToInt(subnet.ip);
+    const subEnd = subStart + (1 << (32 - subnet.cidr)) - 1;
+    const subBroadcast = ipToInt(calcBroadcast(subnet.ip, subnet.cidr));
+
+    // Vérifier si l'IP est dans le sous-réseau
+    if (ipInt <= subStart || ipInt >= subEnd || ipInt === subBroadcast) return message("IP hors plage ou broadcast", false);
+
+    // Vérifier si l'IP est déjà utilisée
+    if (subnet.hosts.some((h, idx) => h.ip === nvIp && idx !== k)) return message("IP déjà utilisée", false);
+
+    // Vérifier si l'IP n'est pas une adresse réseau, sous-réseau ou broadcast existante
+    if (nvIp === subnet.ip || reseaux[i].subnets.some(s => nvIp === s.ip || ipInt === ipToInt(calcBroadcast(s.ip, s.cidr)))) return message("IP correspond à une adresse réseau, sous-réseau ou broadcast", false);
+
+    // Mettre à jour l'hôte
     hote.ip = nvIp;
     hote.nom = nvNom;
     afficherListe();
-  };
+    message("Hôte modifié");
+};
 
   const supprimerHote = (i, j, k) => {
     reseaux[i].subnets[j].hosts.splice(k, 1);
