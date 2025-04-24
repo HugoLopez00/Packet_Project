@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Créer un compte</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="js/auth.js"></script>
+</head>
+
+<body>
+
+  <header>
+    <h1>Créer un compte utilisateur</h1>
+  </header>
+
+  <main>
+    <div class="interface-container">
+      <h2>Inscription</h2>
+      <form id="registerForm">
+        <div class="email-group">
+          <input type="email" id="mail" placeholder="nomutilisateur@bssl.com" required>
+          <div class="email-not-match error-message">Seuls les emails @bssl.com sont autorisés</div>
+        </div>
+
+        <div class="password-group">
+          <input type="password" id="password" placeholder="Mot de passe" required>
+          <div id="passwordStrength" class="password-strength">Min. 8 car. avec min, MAJ, chiffre et caractère spécial</div>
+          <button type="button" class="toggle-password" onclick="togglePasswordVisibility('password')">👁️</button>
+        </div>
+
+        <div class="password-group">
+          <input type="password" id="confirmPassword" placeholder="Confirmer le mot de passe" required>
+          <button type="button" class="toggle-password"
+            onclick="togglePasswordVisibility('confirmPassword')">👁️</button>
+        </div>
+
+        <div class="password-match">Les mots de passe correspondent</div>
+        <div class="password-not-match error-message">Les mots de passe ne correspondent pas</div>
+
+        <button type="submit" id="submitBtn">Créer le compte</button>
+      </form>
+
+      <h2 id="message"></h2>
+      <div id="detailedError" class="error-message"></div>
+      <div id="successMessage" class="success-message"></div>
+
+      <p>Déjà un compte ? <a href="login.html" style="color: #00ccff;">Se connecter ici</a></p>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Packet Project</p>
+  </footer>
+
+  <script>
+    // Initialiser le formulaire d'inscription
+    document.addEventListener('DOMContentLoaded', initRegisterForm);
+  </script>
+
+</body>
+
+</html>

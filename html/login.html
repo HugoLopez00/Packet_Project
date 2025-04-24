@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Connexion</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="js/auth.js"></script>
+</head>
+<body>
+
+  <header>
+    <h1>Connexion</h1>
+  </header>
+
+  <main>
+    <div class="interface-container">
+      <h2>Se connecter</h2>
+      <form id="loginForm">
+        <div class="email-group">
+          <input type="email" id="mail" placeholder="nomutilisateur@bssl.com" required>
+          <div class="email-not-match error-message">Seuls les emails @bssl.com sont autorisés</div>
+        </div>
+        
+        <div class="password-group">
+          <input type="password" id="password" placeholder="Mot de passe" required>
+          <button type="button" class="toggle-password" onclick="togglePasswordVisibility('password')">👁️</button>
+        </div>
+        
+        <button type="submit" id="submitBtn">Se connecter</button>
+      </form>
+
+      <h2 id="message"></h2>
+
+      <p>Pas encore de compte ? <a href="register.html" style="color: #00ccff;">S'inscrire ici</a></p>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Packet Project</p>
+  </footer>
+
+  <script>
+    // Initialiser le formulaire de connexion
+    document.addEventListener('DOMContentLoaded', initLoginForm);
+  </script>
+
+</body>
+</html>
